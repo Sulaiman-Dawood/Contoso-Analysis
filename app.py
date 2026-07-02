@@ -13,7 +13,7 @@ import streamlit as st
 
 BASE_DIRECTORY = Path(__file__).resolve().parent
 DATA_DIRECTORY = BASE_DIRECTORY / "data"
-LOGO_PATH = BASE_DIRECTORY / "images" / "contoso_logo.png"
+LOGO_PATH = BASE_DIRECTORY / "images" / "contoso_logo.webp"
 
 PAGE_TITLE = "Contoso Financial Results FY25"
 PRIMARY_GREEN = "#24b41f"
