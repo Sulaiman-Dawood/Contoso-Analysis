@@ -395,8 +395,8 @@ def load_dashboard_data() -> DashboardData:
     )
 
 
-def format_compact_metric(value: float) -> str:
-    """Format a dashboard metric using its existing compact display style."""
+def format_compact_currency(value: float) -> str:
+    """Format a monetary dashboard metric using compact currency notation."""
     if value >= 1_000_000_000:
         return f"${value / 1_000_000_000:.1f}B"
     if value >= 1_000_000:
@@ -404,6 +404,28 @@ def format_compact_metric(value: float) -> str:
     if value >= 1_000:
         return f"${value / 1_000:.1f}K"
     return f"${value:,.2f}"
+
+
+def format_compact_count(value: float) -> str:
+    """Format a non-currency dashboard metric using compact notation."""
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.1f}B"
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}K"
+    return f"{value:,.0f}"
+
+
+def format_compact_value_lowercase(value: float) -> str:
+    """Format a value using lowercase compact notation for chart tooltips."""
+    if value >= 1_000_000_000:
+        return f"{value / 1_000_000_000:.2f}b"
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.2f}m"
+    if value >= 1_000:
+        return f"{value / 1_000:.2f}k"
+    return f"{value:,.0f}"
 
 
 def build_trend_chart(
@@ -415,15 +437,38 @@ def build_trend_chart(
     color: str,
 ) -> go.Figure:
     """Create a consistently styled monthly trend chart."""
+    chart_data = data.copy()
+    if y_column == "total_revenue":
+        chart_data["tooltip_value"] = chart_data[y_column].map(
+            format_compact_value_lowercase
+        )
+
     figure = px.line(
-        data,
+        chart_data,
         x="month_name",
         y=y_column,
         title=title,
         markers=True,
         color_discrete_sequence=[color],
         labels={"month_name": "Month", y_column: y_axis_title},
+        custom_data=["tooltip_value"] if y_column == "total_revenue" else None,
     )
+    if y_column == "total_revenue":
+        figure.update_traces(
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                f"{y_axis_title}: %{{customdata[0]}}"
+                "<extra></extra>"
+            )
+        )
+    elif y_column == "total_customers":
+        figure.update_traces(
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                f"{y_axis_title}: %{{y:,.0f}}"
+                "<extra></extra>"
+            )
+        )
     figure.update_layout(xaxis_title="Month", yaxis_title=y_axis_title)
     return figure
 
@@ -678,14 +723,14 @@ def render_kpis(monthly_results: pd.DataFrame) -> None:
     total_customers = monthly_results["total_customers"].sum()
     total_orders = monthly_results["total_orders"].sum()
     metric_columns = st.columns(4, gap="large")
-    metric_columns[0].metric("Total Revenue", format_compact_metric(total_revenue))
+    metric_columns[0].metric("Total Revenue", format_compact_currency(total_revenue))
     metric_columns[1].metric(
-        "Total Customers", format_compact_metric(total_customers)
+        "Total Customers", format_compact_count(total_customers)
     )
-    metric_columns[2].metric("Total Orders", format_compact_metric(total_orders))
+    metric_columns[2].metric("Total Orders", format_compact_count(total_orders))
     metric_columns[3].metric(
         "Average Revenue per Customer",
-        format_compact_metric(total_revenue / total_customers),
+        format_compact_currency(total_revenue / total_customers),
     )
 
 
@@ -811,15 +856,57 @@ def render_regional_performance(data: DashboardData) -> None:
         "all regions reaching their highest levels by year-end.",
         "North America leads customer volume; every region peaks near year-end.",
     )
-    st.dataframe(
-        data.monthly_customers,
-        column_config={
+    regional_customer_trends = data.monthly_customers.rename(
+        columns={
             "month": "Month",
             "total_customers": "Total Customers",
             "north_american_customers": "North America Customers",
             "european_customers": "European Customers",
             "australian_customers": "Australian Customers",
-        },
+        }
+    )
+    customer_columns = [
+        "Total Customers",
+        "North America Customers",
+        "European Customers",
+        "Australian Customers",
+    ]
+
+    def style_customer_cells(series: pd.Series) -> list[str]:
+        """Apply a red-to-green text gradient to each customer-count column."""
+        low_color = (185, 28, 28)
+        high_color = (21, 128, 61)
+        min_value = series.min()
+        max_value = series.max()
+        value_range = max_value - min_value
+
+        styles = []
+        for value in series:
+            ratio = 0 if value_range == 0 else (value - min_value) / value_range
+            rgb = tuple(
+                int(start + (end - start) * ratio)
+                for start, end in zip(low_color, high_color, strict=True)
+            )
+            styles.append(
+                f"color: #{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}; "
+                "font-weight: 600"
+            )
+
+        return styles
+
+    styled_regional_customer_trends = regional_customer_trends.style.apply(
+        style_customer_cells,
+        subset=customer_columns,
+    ).format(
+        {
+            "Total Customers": "{:,.0f}",
+            "North America Customers": "{:,.0f}",
+            "European Customers": "{:,.0f}",
+            "Australian Customers": "{:,.0f}",
+        }
+    )
+    st.dataframe(
+        styled_regional_customer_trends,
         hide_index=True,
         width="stretch",
         height=(
