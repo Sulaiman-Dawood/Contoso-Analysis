@@ -1,5 +1,6 @@
 """Contoso FY2025 financial results dashboard."""
 
+import base64
 import calendar
 from dataclasses import dataclass
 from html import escape
@@ -35,6 +36,13 @@ div[data-testid="stMetric"] {
     padding-top: clamp(4rem, 12vw, 12rem);
     padding-right: clamp(1rem, 4vw, 5rem);
     padding-left: clamp(1rem, 4vw, 5rem);
+}
+
+.hero-logo {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
 }
 
 .responsive-spacer--hero {
@@ -200,7 +208,7 @@ div[data-testid="stDataFrame"] {
         min-width: 100% !important;
     }
 
-    div[data-testid="stColumn"]:has(div[data-testid="stImage"]) {
+    div[data-testid="stColumn"]:has(.hero-logo) {
         display: none;
     }
 
@@ -686,6 +694,13 @@ def create_mobile_retention_chart(figure: go.Figure) -> go.Figure:
     return mobile_figure
 
 
+@st.cache_data
+def load_logo_data_uri() -> str:
+    """Return the logo as a data URI so it does not depend on Streamlit's media server."""
+    encoded_logo = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+    return f"data:image/webp;base64,{encoded_logo}"
+
+
 def render_hero() -> None:
     """Render the dashboard introduction and desktop logo."""
     introduction, logo = st.columns([1, 1], gap="large")
@@ -704,7 +719,11 @@ def render_hero() -> None:
             variant="body",
         )
     with logo:
-        st.image(LOGO_PATH, width="stretch")
+        st.markdown(
+            f'<img class="hero-logo" src="{load_logo_data_uri()}" '
+            'alt="Contoso Retail Company logo">',
+            unsafe_allow_html=True,
+        )
 
 
 def render_kpis(monthly_results: pd.DataFrame) -> None:
